@@ -248,28 +248,55 @@ export default function ProfileScreen() {
       }
     >
       <LinearGradient
-        colors={[Colors.light.tint, Colors.light.tint + '80']}
-        style={{ padding: 20, paddingTop: 60 }}
+        colors={['#22c55e', '#16a34a']}
+        style={{
+          width: '100%',
+          paddingTop: 72,
+          paddingBottom: 48,
+          alignItems: 'center',
+          borderBottomLeftRadius: 32,
+          borderBottomRightRadius: 32,
+          marginBottom: 24,
+          minHeight: 180,
+          justifyContent: 'center',
+          overflow: 'hidden',
+        }}
       >
-        <View style={{ alignItems: 'center', marginBottom: 30 }}>
-          <ProfileAvatar
-            imageUrl={userProfile?.profileImageUrl}
-            size={100}
-            onPress={pickImage}
-            isLoading={isUploadingImage}
-            showEditButton={true}
-          />
-          <Text style={{ fontSize: 24, fontWeight: 'bold', color: 'white', marginTop: 15 }}>
-            {userProfile?.displayName || 'User'}
-          </Text>
-          <Text style={{ fontSize: 16, color: 'white', opacity: 0.9 }}>
-            {userProfile?.role === 'admin' ? 'Administrator' : 'User'}
-          </Text>
-          <Text style={{ fontSize: 12, color: 'white', opacity: 0.7, marginTop: 5 }}>
-            Tap photo to change
-          </Text>
+        <View style={{
+          width: '100%',
+          flexDirection: 'row',
+          justifyContent: 'flex-start',
+          alignItems: 'center',
+          paddingHorizontal: 20,
+          paddingLeft: 40,
+          gap: 20,
+        }}>
+          <View style={{
+            alignItems: 'center',
+          }}>
+          </View>
         </View>
       </LinearGradient>
+
+      {/* Profile Avatar Section */}
+      <View style={{ alignItems: 'center', marginTop: -60, marginBottom: 30 }}>
+        <ProfileAvatar
+          imageUrl={userProfile?.profileImageUrl}
+          size={120}
+          onPress={pickImage}
+          isLoading={isUploadingImage}
+          showEditButton={true}
+        />
+        <Text style={{ fontSize: 24, fontWeight: 'bold', color: Colors.light.text, marginTop: 15 }}>
+          {userProfile?.displayName || 'User'}
+        </Text>
+        <Text style={{ fontSize: 16, color: Colors.light.icon, marginBottom: 5 }}>
+          {userProfile?.role === 'admin' ? 'Administrator' : 'User'}
+        </Text>
+        <Text style={{ fontSize: 14, color: Colors.light.icon, marginTop: 5 }}>
+          Tap photo to change
+        </Text>
+      </View>
 
       <View style={{ padding: 20 }}>
         <View style={{
@@ -364,37 +391,77 @@ export default function ProfileScreen() {
           elevation: 3,
         }}>
           {isEditing ? (
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ 
+              flexDirection: 'row', 
+              justifyContent: 'space-between',
+              gap: 12,
+              marginTop: 8
+            }}>
               <TouchableOpacity
                 style={{
                   flex: 1,
-                  backgroundColor: '#f44336',
-                  padding: 15,
-                  borderRadius: 10,
-                  marginRight: 10,
+                  backgroundColor: '#fff',
+                  borderColor: '#e0e0e0',
+                  borderWidth: 1.5,
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
                   alignItems: 'center',
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 2,
+                  elevation: 2,
                 }}
                 onPress={handleCancel}
                 disabled={isSaving}
+                activeOpacity={0.7}
               >
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>Cancel</Text>
+                <MaterialIcons name="close" size={18} color="#666" style={{ marginRight: 6 }} />
+                <Text style={{ 
+                  color: '#666', 
+                  fontSize: 16, 
+                  fontWeight: '600',
+                }}>
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={{
                   flex: 1,
-                  backgroundColor: isSaving ? '#ccc' : Colors.light.tint,
-                  padding: 15,
-                  borderRadius: 10,
-                  marginLeft: 10,
+                  backgroundColor: isSaving ? '#a5d6a7' : Colors.light.tint,
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
                   alignItems: 'center',
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 3,
+                  elevation: 3,
                 }}
                 onPress={handleSave}
                 disabled={isSaving}
+                activeOpacity={0.8}
               >
                 {isSaving ? (
-                  <ActivityIndicator color="white" />
+                  <>
+                    <ActivityIndicator color="white" size="small" style={{ marginRight: 6 }} />
+                    <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+                      Saving...
+                    </Text>
+                  </>
                 ) : (
-                  <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>Save</Text>
+                  <>
+                    <MaterialIcons name="check" size={18} color="white" style={{ marginRight: 6 }} />
+                    <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+                      Save Changes
+                    </Text>
+                  </>
                 )}
               </TouchableOpacity>
             </View>
@@ -424,6 +491,7 @@ export default function ProfileScreen() {
               padding: 15,
               borderRadius: 10,
               alignItems: 'center',
+              marginTop: 20,
             }}
             onPress={handleLogout}
           >

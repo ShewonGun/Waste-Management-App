@@ -49,6 +49,7 @@ export default function WasteScreen() {
   const router = useRouter();
   const [selectedWasteType, setSelectedWasteType] = useState<string>('');
   const [quantity, setQuantity] = useState<string>('');
+  const [pickupAddress, setPickupAddress] = useState<string>('');
   const [pickupDate, setPickupDate] = useState<Date>(new Date());
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('');
   const [specialInstructions, setSpecialInstructions] = useState<string>('');
@@ -131,7 +132,7 @@ export default function WasteScreen() {
   };
 
   const handleSubmit = () => {
-    if (!selectedWasteType || !quantity || !pickupDate || !selectedTimeSlot) {
+    if (!selectedWasteType || !quantity || !pickupAddress || !pickupDate || !selectedTimeSlot) {
       Alert.alert('Missing Information', 'Please fill in all required fields');
       return;
     }
@@ -140,6 +141,7 @@ export default function WasteScreen() {
     const wasteData = {
       wasteType: selectedWasteType,
       quantity,
+      pickupAddress,
       pickupDate: pickupDate.toISOString(),
       timeSlot: selectedTimeSlot,
       specialInstructions,
@@ -346,6 +348,37 @@ export default function WasteScreen() {
             placeholderTextColor={Colors.light.icon}
             value={quantity}
             onChangeText={setQuantity}
+          />
+        </View>
+
+        {/* Pickup Address */}
+        <View style={{ marginBottom: 25 }}>
+          <Text style={{
+            fontSize: 18,
+            fontWeight: '600',
+            color: Colors.light.text,
+            marginBottom: 10,
+          }}>
+            Pickup Address *
+          </Text>
+          <TextInput
+            style={{
+              backgroundColor: Colors.light.inputBackground,
+              borderRadius: 12,
+              padding: 15,
+              fontSize: 16,
+              color: Colors.light.text,
+              borderWidth: 1,
+              borderColor: Colors.light.inputBorder,
+              minHeight: 80,
+            }}
+            placeholder="Enter your full pickup address (e.g., 123 Main St, City, Postal Code)"
+            placeholderTextColor={Colors.light.icon}
+            value={pickupAddress}
+            onChangeText={setPickupAddress}
+            multiline={true}
+            numberOfLines={3}
+            textAlignVertical="top"
           />
         </View>
 

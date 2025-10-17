@@ -291,6 +291,26 @@ export default function WasteSchedulesScreen() {
         </Text>
       </View>
 
+      {/* Pickup Address */}
+      {item.pickupAddress && (
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{
+            fontSize: 14,
+            color: Colors.light.icon,
+            marginBottom: 4,
+          }}>
+            Pickup Address:
+          </Text>
+          <Text style={{
+            fontSize: 16,
+            color: Colors.light.text,
+            fontWeight: '500',
+          }}>
+            {item.pickupAddress}
+          </Text>
+        </View>
+      )}
+
       {/* Date & Time */}
       <View style={{
         flexDirection: 'row',

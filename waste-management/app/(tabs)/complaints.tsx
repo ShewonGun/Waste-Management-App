@@ -273,7 +273,7 @@ export default function ComplaintsScreen() {
         </View>
       </View>
 
-      {userComplaints.length > 0 && (
+      {userComplaints.length > 0 && !editingComplaintId && (
         <View style={styles.complaintsSection}>
           <Text style={styles.sectionTitle}>Your Previous Complaints</Text>
           <FlatList

@@ -10,11 +10,14 @@ import {
   Modal,
   TextInput,
   ScrollView,
+  Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../../constants/theme';
 import { addFertilizer, getAllFertilizers, updateFertilizer, deleteFertilizer, FertilizerData } from '../../utils/database';
+import { uploadProfileImageToCloudinary } from '../../utils/cloudinary';
 import { useRouter } from 'expo-router';
 import { auth } from '../../utils/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -27,6 +30,7 @@ export default function AdminFertilizersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingFertilizer, setEditingFertilizer] = useState<FertilizerData | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -108,6 +112,75 @@ export default function AdminFertilizersScreen() {
     setModalVisible(true);
   };
 
+  const handleImageUpload = async () => {
+    try {
+      // Request permission to access the camera and media library
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'We need camera roll permissions to upload fertilizer images.');
+        return;
+      }
+
+      // Show options for camera or gallery
+      Alert.alert(
+        'Select Image',
+        'Choose how you want to upload the fertilizer image',
+        [
+          { text: 'Camera', onPress: () => openImagePicker('camera') },
+          { text: 'Gallery', onPress: () => openImagePicker('library') },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      Alert.alert('Error', 'Failed to access camera/gallery');
+    }
+  };
+
+  const openImagePicker = async (source: 'camera' | 'library') => {
+    try {
+      setIsUploadingImage(true);
+      
+      let result;
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'We need camera permissions to take photos.');
+          setIsUploadingImage(false);
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+      }
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        
+        // Upload to Cloudinary
+        const uploadedUrl = await uploadProfileImageToCloudinary(imageUri);
+        setFormData({ ...formData, imageUrl: uploadedUrl });
+        
+        Alert.alert('Success', 'Image uploaded successfully!');
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      Alert.alert('Error', 'Failed to upload image. Please try again.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.name || !formData.description || !formData.price) {
       Alert.alert('Error', 'Please fill in all required fields');
@@ -181,6 +254,22 @@ export default function AdminFertilizersScreen() {
       shadowRadius: 4,
       elevation: 3,
     }}>
+      {/* Product Image */}
+      {item.imageUrl && (
+        <View style={{ alignItems: 'center', marginBottom: 15 }}>
+          <Image 
+            source={{ uri: item.imageUrl }} 
+            style={{ 
+              width: '100%', 
+              height: 150, 
+              borderRadius: 8, 
+              backgroundColor: '#f0f0f0' 
+            }}
+            resizeMode="cover"
+          />
+        </View>
+      )}
+
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <Text style={{ fontSize: 18, fontWeight: 'bold', color: Colors.light.tint }}>
           {item.name}
@@ -202,7 +291,7 @@ export default function AdminFertilizersScreen() {
       </Text>
 
       <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4CAF50', marginBottom: 10 }}>
-        ${item.price} per {item.unit}
+        LKR {item.price} per {item.unit}
       </Text>
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -290,22 +379,62 @@ export default function AdminFertilizersScreen() {
           onRequestClose={() => setModalVisible(false)}
         >
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-            <View style={{ backgroundColor: 'white', margin: 20, borderRadius: 10, padding: 20, width: '90%', maxHeight: '80%' }}>
-              <ScrollView>
-                <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' }}>
+            <View style={{ 
+              backgroundColor: 'white', 
+              margin: 20, 
+              borderRadius: 15, 
+              padding: 24, 
+              width: '90%', 
+              maxHeight: '85%',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.25,
+              shadowRadius: 3.84,
+              elevation: 5,
+            }}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={{ 
+                  fontSize: 22, 
+                  fontWeight: 'bold', 
+                  marginBottom: 24, 
+                  textAlign: 'center',
+                  color: Colors.light.text 
+                }}>
                   {editingFertilizer ? 'Edit Fertilizer' : 'Add New Fertilizer'}
                 </Text>
 
                 <TextInput
-                  style={{ borderWidth: 1, borderColor: '#ddd', padding: 10, marginBottom: 15, borderRadius: 5 }}
+                  style={{ 
+                    borderWidth: 1.5, 
+                    borderColor: '#ddd', 
+                    padding: 12, 
+                    marginBottom: 16, 
+                    borderRadius: 8, 
+                    fontSize: 16,
+                    backgroundColor: '#fafafa',
+                    color: '#333'
+                  }}
                   placeholder="Fertilizer Name *"
+                  placeholderTextColor="#999"
                   value={formData.name}
                   onChangeText={(text) => setFormData({ ...formData, name: text })}
                 />
 
                 <TextInput
-                  style={{ borderWidth: 1, borderColor: '#ddd', padding: 10, marginBottom: 15, borderRadius: 5 }}
+                  style={{ 
+                    borderWidth: 1.5, 
+                    borderColor: '#ddd', 
+                    padding: 12, 
+                    marginBottom: 16, 
+                    borderRadius: 8, 
+                    fontSize: 16,
+                    backgroundColor: '#fafafa',
+                    color: '#333',
+                    minHeight: 80,
+                    textAlignVertical: 'top'
+                  }}
                   placeholder="Description *"
+                  placeholderTextColor="#999"
                   value={formData.description}
                   onChangeText={(text) => setFormData({ ...formData, description: text })}
                   multiline
@@ -313,39 +442,126 @@ export default function AdminFertilizersScreen() {
                 />
 
                 <TextInput
-                  style={{ borderWidth: 1, borderColor: '#ddd', padding: 10, marginBottom: 15, borderRadius: 5 }}
-                  placeholder="Price per unit *"
+                  style={{ 
+                    borderWidth: 1.5, 
+                    borderColor: '#ddd', 
+                    padding: 12, 
+                    marginBottom: 16, 
+                    borderRadius: 8, 
+                    fontSize: 16,
+                    backgroundColor: '#fafafa',
+                    color: '#333'
+                  }}
+                  placeholder="Price per unit (LKR) *"
+                  placeholderTextColor="#999"
                   value={formData.price}
                   onChangeText={(text) => setFormData({ ...formData, price: text })}
                   keyboardType="numeric"
                 />
 
                 <TextInput
-                  style={{ borderWidth: 1, borderColor: '#ddd', padding: 10, marginBottom: 15, borderRadius: 5 }}
+                  style={{ 
+                    borderWidth: 1.5, 
+                    borderColor: '#ddd', 
+                    padding: 12, 
+                    marginBottom: 16, 
+                    borderRadius: 8, 
+                    fontSize: 16,
+                    backgroundColor: '#fafafa',
+                    color: '#333'
+                  }}
                   placeholder="Unit (kg, bag, liter, etc.)"
+                  placeholderTextColor="#999"
                   value={formData.unit}
                   onChangeText={(text) => setFormData({ ...formData, unit: text })}
                 />
 
-                <TextInput
-                  style={{ borderWidth: 1, borderColor: '#ddd', padding: 10, marginBottom: 15, borderRadius: 5 }}
-                  placeholder="Image URL (optional)"
-                  value={formData.imageUrl}
-                  onChangeText={(text) => setFormData({ ...formData, imageUrl: text })}
-                />
-
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
+                {/* Image Upload Section */}
+                <View style={{ marginBottom: 20 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 12, color: Colors.light.text }}>
+                    Product Image
+                  </Text>
+                  
                   <TouchableOpacity
-                    style={{ backgroundColor: '#666', padding: 15, borderRadius: 5, flex: 1, marginRight: 10 }}
+                    style={{
+                      borderWidth: 2,
+                      borderColor: formData.imageUrl ? '#4CAF50' : '#ddd',
+                      borderStyle: 'dashed',
+                      padding: 24,
+                      borderRadius: 12,
+                      alignItems: 'center',
+                      backgroundColor: formData.imageUrl ? '#f0f9f0' : '#fafafa',
+                    }}
+                    onPress={handleImageUpload}
+                    disabled={isUploadingImage}
+                  >
+                    {isUploadingImage ? (
+                      <ActivityIndicator size="large" color={Colors.light.tint} />
+                    ) : formData.imageUrl ? (
+                      <View style={{ alignItems: 'center' }}>
+                        <Image 
+                          source={{ uri: formData.imageUrl }} 
+                          style={{ 
+                            width: 100, 
+                            height: 100, 
+                            borderRadius: 8, 
+                            marginBottom: 10 
+                          }} 
+                        />
+                        <MaterialIcons name="check-circle" size={24} color="#4CAF50" />
+                        <Text style={{ color: '#4CAF50', fontWeight: 'bold', marginTop: 5 }}>
+                          Image Uploaded ✓
+                        </Text>
+                        <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>
+                          Tap to change image
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={{ alignItems: 'center' }}>
+                        <MaterialIcons name="add-a-photo" size={48} color="#666" />
+                        <Text style={{ color: '#666', fontWeight: 'bold', marginTop: 10 }}>
+                          Add Product Image
+                        </Text>
+                        <Text style={{ color: '#999', fontSize: 12, marginTop: 5 }}>
+                          Tap to upload from camera or gallery
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 24, gap: 12 }}>
+                  <TouchableOpacity
+                    style={{ 
+                      backgroundColor: '#666', 
+                      padding: 16, 
+                      borderRadius: 10, 
+                      flex: 1,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.2,
+                      shadowRadius: 2,
+                      elevation: 2,
+                    }}
                     onPress={() => setModalVisible(false)}
                   >
-                    <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>Cancel</Text>
+                    <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold', fontSize: 16 }}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={{ backgroundColor: '#4CAF50', padding: 15, borderRadius: 5, flex: 1, marginLeft: 10 }}
+                    style={{ 
+                      backgroundColor: '#4CAF50', 
+                      padding: 16, 
+                      borderRadius: 10, 
+                      flex: 1,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.2,
+                      shadowRadius: 2,
+                      elevation: 2,
+                    }}
                     onPress={handleSave}
                   >
-                    <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>
+                    <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold', fontSize: 16 }}>
                       {editingFertilizer ? 'Update' : 'Add'}
                     </Text>
                   </TouchableOpacity>

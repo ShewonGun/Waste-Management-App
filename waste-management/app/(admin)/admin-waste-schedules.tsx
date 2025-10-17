@@ -87,24 +87,35 @@ export default function AdminWasteSchedulesScreen() {
     }
   };
 
-  // Format time slot to readable format (if it's a time string)
+  // Format time slot to readable format
   const formatTimeSlot = (timeSlot: string) => {
     // Check if timeSlot is already a readable format (like "Morning", "Afternoon", "Evening")
     if (['Morning', 'Afternoon', 'Evening'].includes(timeSlot)) {
       return timeSlot;
     }
     
-    // If it's a time string, format it
-    try {
-      const time = new Date(timeSlot);
-      return time.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      });
-    } catch (error) {
-      return timeSlot; // Return original if parsing fails
+    // Handle time range formats like "9:00 AM - 11:00 AM"
+    if (timeSlot && timeSlot.includes(' - ')) {
+      return timeSlot;
     }
+    
+    // If it's a time string, try to format it
+    try {
+      // Check if it's a valid date string
+      const time = new Date(timeSlot);
+      if (!isNaN(time.getTime())) {
+        return time.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+      }
+    } catch (error) {
+      console.log('Time parsing error:', error);
+    }
+    
+    // Return original if all parsing fails
+    return timeSlot || 'N/A';
   };
 
   const handleCancelWaste = async (wasteId: string) => {
@@ -210,8 +221,14 @@ export default function AdminWasteSchedulesScreen() {
       </Text>
 
       <Text style={{ fontSize: 14, color: '#666', marginBottom: 5 }}>
-        <MaterialIcons name="location-on" size={14} color="#666" /> {item.quantity}
+        <MaterialIcons name="scale" size={14} color="#666" /> Quantity: {item.quantity}
       </Text>
+
+      {item.pickupAddress && (
+        <Text style={{ fontSize: 14, color: '#666', marginBottom: 5 }}>
+          <MaterialIcons name="location-on" size={14} color="#666" /> {item.pickupAddress}
+        </Text>
+      )}
 
       <Text style={{ fontSize: 14, color: '#666', marginBottom: 5 }}>
         <MaterialIcons name="access-time" size={14} color="#666" /> {formatDate(item.pickupDate)} at {formatTimeSlot(item.timeSlot)}

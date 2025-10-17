@@ -20,6 +20,7 @@ export interface WasteData {
   userId: string;
   wasteType: string;
   quantity: string;
+  pickupAddress: string;
   pickupDate: string;
   timeSlot: string;
   specialInstructions: string;
@@ -666,6 +667,7 @@ export const getAllWaste = async (): Promise<WasteData[]> => {
         userId: data.userId,
         wasteType: data.wasteType,
         quantity: data.quantity,
+        pickupAddress: data.pickupAddress || '',
         pickupDate: data.pickupDate,
         timeSlot: data.timeSlot,
         specialInstructions: data.specialInstructions,

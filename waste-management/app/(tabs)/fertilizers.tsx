@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Modal,
   TextInput,
+  Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,7 @@ import { getAllFertilizers, purchaseFertilizer, FertilizerData, addToCart, getUs
 import { useRouter } from 'expo-router';
 import { auth } from '../../utils/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { useFocusEffect } from '@react-navigation/native';
 import { isUserAdmin } from '../../utils/database';
 
 export default function FertilizerShopScreen() {
@@ -76,6 +78,13 @@ export default function FertilizerShopScreen() {
     loadCartCount();
     loadUserPoints();
   }, []);
+
+  // Refresh cart count when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadCartCount();
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -194,6 +203,22 @@ export default function FertilizerShopScreen() {
       shadowRadius: 4,
       elevation: 3,
     }}>
+      {/* Product Image */}
+      {item.imageUrl && (
+        <View style={{ alignItems: 'center', marginBottom: 15 }}>
+          <Image 
+            source={{ uri: item.imageUrl }} 
+            style={{ 
+              width: '100%', 
+              height: 200, 
+              borderRadius: 8, 
+              backgroundColor: '#f0f0f0' 
+            }}
+            resizeMode="cover"
+          />
+        </View>
+      )}
+
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Text style={{ fontSize: 18, fontWeight: 'bold', color: Colors.light.text }}>
           {item.name}
@@ -546,6 +571,22 @@ export default function FertilizerShopScreen() {
                   <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center', color: Colors.light.text }}>
                     Purchase {selectedFertilizer.name}
                   </Text>
+
+                  {/* Product Image in Modal */}
+                  {selectedFertilizer.imageUrl && (
+                    <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                      <Image 
+                        source={{ uri: selectedFertilizer.imageUrl }} 
+                        style={{ 
+                          width: 120, 
+                          height: 120, 
+                          borderRadius: 12, 
+                          backgroundColor: '#f0f0f0' 
+                        }}
+                        resizeMode="cover"
+                      />
+                    </View>
+                  )}
 
                   <Text style={{ fontSize: 16, marginBottom: 15, color: Colors.light.text }}>
                     Price: LKR {selectedFertilizer.price} per {selectedFertilizer.unit}
