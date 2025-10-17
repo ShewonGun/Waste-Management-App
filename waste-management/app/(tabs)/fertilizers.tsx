@@ -13,7 +13,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../constants/theme';
-import { getAllFertilizers, purchaseFertilizer, FertilizerData, addToCart, getUserCartItems } from '../../utils/database';
+import { getAllFertilizers, purchaseFertilizer, FertilizerData, addToCart, getUserCartItems, getUserPoints, calculatePointsDiscount } from '../../utils/database';
 import { useRouter } from 'expo-router';
 import { auth } from '../../utils/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -34,6 +34,8 @@ export default function FertilizerShopScreen() {
     customerEmail: '',
   });
   const [cartCount, setCartCount] = useState(0);
+  const [userPoints, setUserPoints] = useState(0);
+  const [usePointsForDiscount, setUsePointsForDiscount] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -72,6 +74,7 @@ export default function FertilizerShopScreen() {
   useEffect(() => {
     loadFertilizers();
     loadCartCount();
+    loadUserPoints();
   }, []);
 
   const onRefresh = () => {
@@ -105,14 +108,23 @@ export default function FertilizerShopScreen() {
     }
 
     try {
-      const totalAmount = selectedFertilizer.price * quantity;
+      const originalAmount = selectedFertilizer.price * quantity;
+      let discountAmount = 0;
+      
+      if (usePointsForDiscount && userPoints > 0) {
+        discountAmount = calculatePointsDiscount(userPoints, originalAmount);
+      }
+      
+      const finalAmount = originalAmount - discountAmount;
       const purchaseDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 
       await purchaseFertilizer({
         fertilizerId: selectedFertilizer.fertilizerId,
         fertilizerName: selectedFertilizer.name,
         quantity,
-        totalAmount,
+        originalAmount,
+        pointsDiscount: discountAmount,
+        totalAmount: finalAmount,
         purchaseDate,
         status: 'pending',
         deliveryAddress: purchaseData.deliveryAddress,
@@ -159,6 +171,15 @@ export default function FertilizerShopScreen() {
     }
   };
 
+  const loadUserPoints = async () => {
+    try {
+      const points = await getUserPoints();
+      setUserPoints(points);
+    } catch (error) {
+      console.error('Error loading user points:', error);
+    }
+  };
+
   const renderFertilizerItem = ({ item }: { item: FertilizerData }) => (
     <View style={{
       backgroundColor: Colors.light.inputBackground,
@@ -195,7 +216,7 @@ export default function FertilizerShopScreen() {
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
         <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4CAF50' }}>
-          ${item.price} per {item.unit}
+          LKR {item.price} per {item.unit}
         </Text>
       </View>
 
@@ -527,7 +548,7 @@ export default function FertilizerShopScreen() {
                   </Text>
 
                   <Text style={{ fontSize: 16, marginBottom: 15, color: Colors.light.text }}>
-                    Price: ${selectedFertilizer.price} per {selectedFertilizer.unit}
+                    Price: LKR {selectedFertilizer.price} per {selectedFertilizer.unit}
                   </Text>
 
                   <Text style={{
@@ -556,12 +577,70 @@ export default function FertilizerShopScreen() {
                     keyboardType="numeric"
                   />
 
+                  {/* Points and Discount Section */}
+                  <View style={{ marginBottom: 15, padding: 12, backgroundColor: '#f0f9f0', borderRadius: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#2d5a2d', marginBottom: 5 }}>
+                      Your Points: {userPoints} (≈ LKR {(userPoints * 3.00).toFixed(2)} discount)
+                    </Text>
+                    
+                    {userPoints > 0 && (
+                      <TouchableOpacity
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          marginTop: 8,
+                        }}
+                        onPress={() => setUsePointsForDiscount(!usePointsForDiscount)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 4,
+                          borderWidth: 2,
+                          borderColor: Colors.light.button,
+                          backgroundColor: usePointsForDiscount ? Colors.light.button : 'transparent',
+                          marginRight: 8,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}>
+                          {usePointsForDiscount && (
+                            <MaterialIcons name="check" size={14} color={Colors.light.buttonText} />
+                          )}
+                        </View>
+                        <Text style={{ fontSize: 14, color: Colors.light.text }}>
+                          Use points for discount
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
                   <Text style={{
                     fontSize: 14,
                     color: Colors.light.icon,
                     marginBottom: 15,
                   }}>
-                    Total: ${selectedFertilizer ? (selectedFertilizer.price * parseFloat(purchaseData.quantity || '0')).toFixed(2) : '0.00'}
+                    {(() => {
+                      const originalAmount = selectedFertilizer ? (selectedFertilizer.price * parseFloat(purchaseData.quantity || '0')) : 0;
+                      const discountAmount = usePointsForDiscount && userPoints > 0 ? calculatePointsDiscount(userPoints, originalAmount) : 0;
+                      const finalAmount = originalAmount - discountAmount;
+                      
+                      return (
+                        <View>
+                          <Text style={{ color: Colors.light.icon }}>
+                            Subtotal: LKR {originalAmount.toFixed(2)}
+                          </Text>
+                          {discountAmount > 0 && (
+                            <Text style={{ color: '#4CAF50', fontWeight: 'bold' }}>
+                              Points Discount: -LKR {discountAmount.toFixed(2)}
+                            </Text>
+                          )}
+                          <Text style={{ color: Colors.light.text, fontWeight: 'bold', fontSize: 16 }}>
+                            Total: LKR {finalAmount.toFixed(2)}
+                          </Text>
+                        </View>
+                      );
+                    })()}
                   </Text>
 
                   <Text style={{

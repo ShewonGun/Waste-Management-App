@@ -72,6 +72,41 @@ export default function AdminWasteSchedulesScreen() {
     loadWasteSchedules();
   };
 
+  // Format date to readable format
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return dateString; // Return original if parsing fails
+    }
+  };
+
+  // Format time slot to readable format (if it's a time string)
+  const formatTimeSlot = (timeSlot: string) => {
+    // Check if timeSlot is already a readable format (like "Morning", "Afternoon", "Evening")
+    if (['Morning', 'Afternoon', 'Evening'].includes(timeSlot)) {
+      return timeSlot;
+    }
+    
+    // If it's a time string, format it
+    try {
+      const time = new Date(timeSlot);
+      return time.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      return timeSlot; // Return original if parsing fails
+    }
+  };
+
   const handleCancelWaste = async (wasteId: string) => {
     Alert.alert(
       'Cancel Waste Pickup',
@@ -179,7 +214,7 @@ export default function AdminWasteSchedulesScreen() {
       </Text>
 
       <Text style={{ fontSize: 14, color: '#666', marginBottom: 5 }}>
-        <MaterialIcons name="access-time" size={14} color="#666" /> {item.pickupDate} at {item.timeSlot}
+        <MaterialIcons name="access-time" size={14} color="#666" /> {formatDate(item.pickupDate)} at {formatTimeSlot(item.timeSlot)}
       </Text>
 
       {item.specialInstructions && (

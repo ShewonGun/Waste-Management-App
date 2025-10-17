@@ -20,7 +20,9 @@ import {
   updateCartItemQuantity, 
   removeFromCart, 
   clearCart,
-  purchaseCartItems 
+  purchaseCartItems,
+  getUserPoints,
+  calculatePointsDiscount
 } from '../utils/database';
 import { useRouter } from 'expo-router';
 import { auth } from '../utils/firebase';
@@ -38,6 +40,8 @@ export default function CartScreen() {
     customerEmail: '',
     deliveryAddress: '',
   });
+  const [userPoints, setUserPoints] = useState(0);
+  const [usePointsForDiscount, setUsePointsForDiscount] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -53,6 +57,10 @@ export default function CartScreen() {
     try {
       const items = await getUserCartItems();
       setCartItems(items);
+      
+      // Also load user points
+      const points = await getUserPoints();
+      setUserPoints(points);
     } catch (error) {
       console.error('Error loading cart items:', error);
       Alert.alert('Error', 'Failed to load cart items. Please try again.');
@@ -141,6 +149,7 @@ export default function CartScreen() {
       customerEmail: '',
       deliveryAddress: '',
     });
+    setUsePointsForDiscount(false); // Reset discount checkbox
     setCheckoutModalVisible(true);
   };
 
@@ -151,10 +160,19 @@ export default function CartScreen() {
     }
 
     try {
-      const purchaseIds = await purchaseCartItems(customerInfo);
+      const totalAmount = getTotalAmount();
+      let discountAmount = 0;
+      
+      if (usePointsForDiscount && userPoints > 0) {
+        discountAmount = calculatePointsDiscount(userPoints, totalAmount);
+      }
+      
+      const purchaseIds = await purchaseCartItems(customerInfo, discountAmount);
+      
+      const discountMessage = discountAmount > 0 ? ` You saved LKR ${discountAmount.toFixed(2)} with your points!` : '';
       Alert.alert(
         'Success',
-        `Order placed successfully! ${purchaseIds.length} item(s) ordered. You will be notified once confirmed.`,
+        `Order placed successfully! ${purchaseIds.length} item(s) ordered.${discountMessage} You will be notified once confirmed.`,
         [
           {
             text: 'OK',
@@ -196,7 +214,7 @@ export default function CartScreen() {
             {item.fertilizerName}
           </Text>
           <Text style={{ fontSize: 14, color: Colors.light.icon }}>
-            ${item.fertilzerPrice} per {item.fertilizerUnit}
+            LKR {item.fertilzerPrice} per {item.fertilizerUnit}
           </Text>
         </View>
         
@@ -245,7 +263,7 @@ export default function CartScreen() {
         </View>
 
         <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4CAF50' }}>
-          ${item.totalAmount.toFixed(2)}
+          LKR {item.totalAmount.toFixed(2)}
         </Text>
       </View>
     </View>
@@ -412,7 +430,7 @@ export default function CartScreen() {
           }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
               <Text style={{ fontSize: 18, fontWeight: 'bold', color: Colors.light.text }}>
-                Total: ${getTotalAmount().toFixed(2)}
+                Total: LKR {getTotalAmount().toFixed(2)}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.light.icon }}>
                 {cartItems.length} item{cartItems.length !== 1 ? 's' : ''}
@@ -466,6 +484,67 @@ export default function CartScreen() {
             }}>
               Checkout Information
             </Text>
+
+            {/* Points and Discount Section */}
+            <View style={{ marginBottom: 20, padding: 15, backgroundColor: '#f0f9f0', borderRadius: 12 }}>
+              <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#2d5a2d', marginBottom: 8 }}>
+                Your Points: {userPoints} (≈ LKR {(userPoints * 3.00).toFixed(2)} discount available)
+              </Text>
+              
+              {userPoints > 0 && (
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: 8,
+                  }}
+                  onPress={() => setUsePointsForDiscount(!usePointsForDiscount)}
+                  activeOpacity={0.7}
+                >
+                  <View style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 4,
+                    borderWidth: 2,
+                    borderColor: Colors.light.button,
+                    backgroundColor: usePointsForDiscount ? Colors.light.button : 'transparent',
+                    marginRight: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    {usePointsForDiscount && (
+                      <MaterialIcons name="check" size={16} color={Colors.light.buttonText} />
+                    )}
+                  </View>
+                  <Text style={{ fontSize: 16, color: Colors.light.text, fontWeight: '500' }}>
+                    Use points for discount
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Order Summary */}
+              {(() => {
+                const totalAmount = getTotalAmount();
+                const discountAmount = usePointsForDiscount && userPoints > 0 ? calculatePointsDiscount(userPoints, totalAmount) : 0;
+                const finalAmount = totalAmount - discountAmount;
+                
+                return (
+                  <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#d0e8d0' }}>
+                    <Text style={{ fontSize: 14, color: Colors.light.text }}>
+                      Subtotal: LKR {totalAmount.toFixed(2)}
+                    </Text>
+                    {discountAmount > 0 && (
+                      <Text style={{ fontSize: 14, color: '#4CAF50', fontWeight: 'bold' }}>
+                        Points Discount: -LKR {discountAmount.toFixed(2)}
+                      </Text>
+                    )}
+                    <Text style={{ fontSize: 18, color: Colors.light.text, fontWeight: 'bold', marginTop: 5 }}>
+                      Total: LKR {finalAmount.toFixed(2)}
+                    </Text>
+                  </View>
+                );
+              })()}
+            </View>
 
             <Text style={{
               fontSize: 16,
@@ -573,16 +652,6 @@ export default function CartScreen() {
               multiline
               numberOfLines={3}
             />
-
-            <Text style={{
-              fontSize: 18,
-              fontWeight: 'bold',
-              color: Colors.light.text,
-              marginBottom: 20,
-              textAlign: 'center',
-            }}>
-              Total: ${getTotalAmount().toFixed(2)}
-            </Text>
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
               <TouchableOpacity

@@ -305,7 +305,7 @@ export default function ViewSchedulesScreen() {
             color: Colors.light.button,
             fontWeight: 'bold',
           }}>
-            ${item.totalAmount.toFixed(2)}
+            LKR {item.totalAmount.toFixed(2)}
           </Text>
         </View>
       </View>

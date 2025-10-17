@@ -125,7 +125,7 @@ export default function AdminFertilizerOrdersScreen() {
       </Text>
 
       <Text style={{ fontSize: 14, color: '#666', marginBottom: 5 }}>
-        Quantity: {item.quantity} | Total: ${item.totalAmount.toFixed(2)}
+        Quantity: {item.quantity} | Total: LKR {item.totalAmount.toFixed(2)}
       </Text>
 
       <Text style={{ fontSize: 14, color: '#666', marginBottom: 5 }}>

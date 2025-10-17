@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, TextInput, Image, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../constants/theme';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
 import { savePickupData } from '../utils/database';
+import { uploadProfileImageToCloudinary } from '../utils/cloudinary';
 import { auth, db } from '../utils/firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -36,6 +38,8 @@ export default function PaymentPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [pickupAddress, setPickupAddress] = useState<string>('');
   const [isAuthChecked, setIsAuthChecked] = useState(false);
+  const [receiptImage, setReceiptImage] = useState<string | null>(null);
+  const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
 
   // Check authentication state
   React.useEffect(() => {
@@ -135,7 +139,82 @@ export default function PaymentPage() {
     });
   };
 
+  const handleReceiptUpload = async () => {
+    try {
+      // Request permission to access the camera and media library
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'We need camera roll permissions to upload receipt images.');
+        return;
+      }
+
+      // Show options for camera or gallery
+      Alert.alert(
+        'Select Image',
+        'Choose how you want to upload the payment receipt',
+        [
+          { text: 'Camera', onPress: () => openImagePicker('camera') },
+          { text: 'Gallery', onPress: () => openImagePicker('library') },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      Alert.alert('Error', 'Failed to access camera/gallery');
+    }
+  };
+
+  const openImagePicker = async (source: 'camera' | 'library') => {
+    try {
+      setIsUploadingReceipt(true);
+      
+      let result;
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'We need camera permissions to take photos.');
+          setIsUploadingReceipt(false);
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+      }
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        
+        // Upload to Cloudinary
+        const uploadedUrl = await uploadProfileImageToCloudinary(imageUri);
+        setReceiptImage(uploadedUrl);
+        
+        Alert.alert('Success', 'Receipt uploaded successfully!');
+      }
+    } catch (error) {
+      console.error('Error uploading receipt:', error);
+      Alert.alert('Error', 'Failed to upload receipt. Please try again.');
+    } finally {
+      setIsUploadingReceipt(false);
+    }
+  };
+
   const handleSchedulePickup = async () => {
+    // Validate receipt requirement for bank transfer and paycheck
+    if ((selectedPayment === 'bank' || selectedPayment === 'paycheck') && !receiptImage) {
+      Alert.alert('Receipt Required', 'Please upload a payment receipt for bank transfer or paycheck payments.');
+      return;
+    }
+
     if (selectedPayment && date && time && pickupAddress) {
       setIsLoading(true);
       console.log('Starting pickup scheduling...');
@@ -150,6 +229,7 @@ export default function PaymentPage() {
 
       try {
         console.log('Saving pickup data to Firebase...');
+        console.log('Receipt URL being saved:', receiptImage);
 
         // Save pickup data to Firebase
         const pickupId = await savePickupData({
@@ -160,6 +240,7 @@ export default function PaymentPage() {
           pickupDate: date.toISOString(),
           pickupTime: time.toISOString(),
           pickupAddress: pickupAddress,
+          paymentReceiptUrl: receiptImage || undefined,
         });
         console.log('Pickup data saved successfully, pickupId:', pickupId);
 
@@ -176,6 +257,7 @@ export default function PaymentPage() {
             time: time.toISOString(),
             pickupId: pickupId,
             address: pickupAddress,
+            receiptUrl: receiptImage || '',
           },
         } as any);
         console.log('Navigation completed');
@@ -237,6 +319,54 @@ export default function PaymentPage() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Receipt Upload for Bank Transfer and Paycheck */}
+        {(selectedPayment === 'bank' || selectedPayment === 'paycheck') && (
+          <View style={styles.receiptContainer}>
+            <Text style={styles.receiptTitle}>
+              Payment Receipt {(selectedPayment === 'bank' || selectedPayment === 'paycheck') && '*'}
+            </Text>
+            <Text style={styles.receiptSubtitle}>
+              Please upload a photo of your payment receipt
+            </Text>
+            
+            <TouchableOpacity
+              style={styles.receiptUploadButton}
+              onPress={handleReceiptUpload}
+              disabled={isUploadingReceipt}
+            >
+              <MaterialIcons 
+                name={receiptImage ? "check-circle" : "photo-camera"} 
+                size={24} 
+                color={receiptImage ? "#4CAF50" : Colors.light.button} 
+              />
+              <Text style={[
+                styles.receiptUploadText,
+                receiptImage && styles.receiptUploadTextSuccess
+              ]}>
+                {isUploadingReceipt 
+                  ? "Uploading..." 
+                  : receiptImage 
+                    ? "Receipt Uploaded ✓" 
+                    : "Upload Receipt Photo"
+                }
+              </Text>
+            </TouchableOpacity>
+
+            {receiptImage && (
+              <View style={styles.receiptPreview}>
+                <Image source={{ uri: receiptImage }} style={styles.receiptImage} />
+                <TouchableOpacity
+                  style={styles.changeReceiptButton}
+                  onPress={handleReceiptUpload}
+                >
+                  <MaterialIcons name="edit" size={16} color={Colors.light.button} />
+                  <Text style={styles.changeReceiptText}>Change Receipt</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Pickup Address */}
         <View style={styles.addressContainer}>
@@ -625,5 +755,72 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     minHeight: 60,
     textAlignVertical: 'top',
+  },
+  receiptContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  receiptTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginBottom: 8,
+  },
+  receiptSubtitle: {
+    fontSize: 14,
+    color: Colors.light.icon,
+    marginBottom: 16,
+  },
+  receiptUploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: Colors.light.tint,
+    borderStyle: 'dashed',
+    padding: 16,
+    marginBottom: 16,
+  },
+  receiptUploadText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: Colors.light.text,
+    fontWeight: '500',
+  },
+  receiptUploadTextSuccess: {
+    color: '#4CAF50',
+  },
+  receiptPreview: {
+    alignItems: 'center',
+  },
+  receiptImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 8,
+    marginBottom: 12,
+    resizeMode: 'cover',
+  },
+  changeReceiptButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.light.tint,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  changeReceiptText: {
+    marginLeft: 4,
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '500',
   },
 });

@@ -38,6 +38,7 @@ export default function SignupScreen() {
     email: email,
     displayName: username,
     role: role,
+    points: 0, // Initialize with 0 points
   });
 
   router.replace('/(tabs)' as any); // Redirect to home page

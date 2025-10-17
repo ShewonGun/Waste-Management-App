@@ -7,6 +7,9 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Modal,
+  Image,
+  Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +25,8 @@ export default function AdminRecycleSchedulesScreen() {
   const [recycleSchedules, setRecycleSchedules] = useState<PickupData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedReceiptUrl, setSelectedReceiptUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -47,6 +52,7 @@ export default function AdminRecycleSchedulesScreen() {
   const loadRecycleSchedules = async () => {
     try {
       const pickups = await getAllPickups();
+      
       // Sort by createdAt in descending order
       pickups.sort((a, b) => {
         const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt as string);
@@ -70,6 +76,40 @@ export default function AdminRecycleSchedulesScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     loadRecycleSchedules();
+  };
+
+  const handleViewReceipt = (receiptUrl: string) => {
+    setSelectedReceiptUrl(receiptUrl);
+    setShowReceiptModal(true);
+  };
+
+  // Format date to readable format
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return dateString; // Return original if parsing fails
+    }
+  };
+
+  // Format time to readable format
+  const formatTime = (timeString: string) => {
+    try {
+      const time = new Date(timeString);
+      return time.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      return timeString; // Return original if parsing fails
+    }
   };
 
   const handleCancelPickup = async (pickupId: string) => {
@@ -179,12 +219,54 @@ export default function AdminRecycleSchedulesScreen() {
       </Text>
 
       <Text style={{ fontSize: 14, color: '#666', marginBottom: 5 }}>
-        <MaterialIcons name="access-time" size={14} color="#666" /> {item.pickupDate} at {item.pickupTime}
+        <MaterialIcons name="access-time" size={14} color="#666" /> {formatDate(item.pickupDate)} at {formatTime(item.pickupTime)}
       </Text>
 
-      <Text style={{ fontSize: 14, color: '#666', marginBottom: 10 }}>
-        <MaterialIcons name="attach-money" size={14} color="#666" /> ${item.totalAmount}
+      <Text style={{ fontSize: 14, color: '#666', marginBottom: 5 }}>
+        <MaterialIcons name="attach-money" size={14} color="#666" /> LKR {item.totalAmount}
       </Text>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <Text style={{ fontSize: 14, color: '#666', flex: 1 }}>
+          <MaterialIcons name="payment" size={14} color="#666" /> Payment: {item.paymentMethod === 'cash' ? 'Cash' : item.paymentMethod === 'bank' ? 'Bank Transfer' : 'Paycheck'}
+        </Text>
+        {(item.paymentMethod === 'bank' || item.paymentMethod === 'paycheck') && (
+          item.paymentReceiptUrl ? (
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#2196F3',
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+              onPress={() => handleViewReceipt(item.paymentReceiptUrl!)}
+            >
+              <MaterialIcons name="receipt" size={12} color="white" />
+              <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold', marginLeft: 4 }}>
+                View Receipt
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View
+              style={{
+                backgroundColor: '#FF9800',
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+            >
+              <MaterialIcons name="warning" size={12} color="white" />
+              <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold', marginLeft: 4 }}>
+                No Receipt
+              </Text>
+            </View>
+          )
+        )}
+      </View>
 
       {item.status === 'scheduled' && (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -268,6 +350,62 @@ export default function AdminRecycleSchedulesScreen() {
           }
         />
       </View>
+
+      {/* Receipt Modal */}
+      <Modal
+        visible={showReceiptModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowReceiptModal(false)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.9)',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}>
+          <View style={{
+            width: Dimensions.get('window').width * 0.9,
+            height: Dimensions.get('window').height * 0.8,
+            backgroundColor: 'white',
+            borderRadius: 10,
+            padding: 20,
+          }}>
+            <View style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 20,
+            }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: Colors.light.text }}>
+                Payment Receipt
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowReceiptModal(false)}
+                style={{
+                  backgroundColor: '#f0f0f0',
+                  borderRadius: 20,
+                  padding: 8,
+                }}
+              >
+                <MaterialIcons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            {selectedReceiptUrl && (
+              <Image
+                source={{ uri: selectedReceiptUrl }}
+                style={{
+                  flex: 1,
+                  width: '100%',
+                  borderRadius: 8,
+                }}
+                resizeMode="contain"
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }

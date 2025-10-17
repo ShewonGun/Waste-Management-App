@@ -7,12 +7,13 @@ import {
   Alert,
   ScrollView,
   TextInput,
+  RefreshControl,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../constants/theme';
-import { getUserProfile, updateUserProfile, createUserProfile, UserProfile } from '../utils/database';
+import { getUserProfile, updateUserProfile, createUserProfile, UserProfile, getUserPoints } from '../utils/database';
 import { uploadProfileImageToCloudinary } from '../utils/cloudinary';
 import ProfileAvatar from '../components/profile-avatar';
 import { useRouter } from 'expo-router';
@@ -22,7 +23,9 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 export default function ProfileScreen() {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [currentPoints, setCurrentPoints] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -52,6 +55,10 @@ export default function ProfileScreen() {
           displayName: profile.displayName || '',
           email: profile.email || '',
         });
+        
+        // Load current points separately to ensure accuracy
+        const points = await getUserPoints();
+        setCurrentPoints(points);
       } else {
         // If no profile exists, create one with Firebase Auth data
         const user = auth.currentUser;
@@ -61,6 +68,7 @@ export default function ProfileScreen() {
             email: user.email || '',
             displayName: user.displayName || '',
             role: 'user' as const, // Default role
+            points: 0, // Initialize with 0 points
             createdAt: new Date(),
           };
 
@@ -69,6 +77,7 @@ export default function ProfileScreen() {
             email: defaultProfile.email,
             displayName: defaultProfile.displayName,
             role: defaultProfile.role,
+            points: 0, // Initialize with 0 points
           });
 
           setUserProfile(defaultProfile as any);
@@ -83,7 +92,13 @@ export default function ProfileScreen() {
       Alert.alert('Error', 'Failed to load profile. Please try again.');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadUserProfile();
   };
 
   const handleSave = async () => {
@@ -222,7 +237,16 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: Colors.light.background }}>
+    <ScrollView 
+      style={{ flex: 1, backgroundColor: Colors.light.background }}
+      refreshControl={
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={handleRefresh}
+          colors={[Colors.light.tint]}
+        />
+      }
+    >
       <LinearGradient
         colors={[Colors.light.tint, Colors.light.tint + '80']}
         style={{ padding: 20, paddingTop: 60 }}
@@ -298,6 +322,27 @@ export default function ProfileScreen() {
             <Text style={{ fontSize: 16, color: '#333', padding: 12, backgroundColor: '#f9f9f9', borderRadius: 8 }}>
               {userProfile?.role === 'admin' ? 'Administrator' : 'User'}
             </Text>
+          </View>
+
+          <View style={{ marginBottom: 15 }}>
+            <Text style={{ fontSize: 14, color: '#666', marginBottom: 5 }}>Eco Points</Text>
+            <View style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              padding: 12, 
+              backgroundColor: '#f0f9f0', 
+              borderRadius: 8,
+              borderLeftWidth: 4,
+              borderLeftColor: '#4CAF50'
+            }}>
+              <MaterialIcons name="eco" size={20} color="#4CAF50" style={{ marginRight: 8 }} />
+              <Text style={{ fontSize: 16, color: '#2d5a2d', fontWeight: 'bold', flex: 1 }}>
+                {currentPoints} points
+              </Text>
+              <Text style={{ fontSize: 12, color: '#666' }}>
+                ≈ LKR {(currentPoints * 3.00).toFixed(2)} discount
+              </Text>
+            </View>
           </View>
 
           <View style={{ marginBottom: 15 }}>

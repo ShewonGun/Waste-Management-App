@@ -12,6 +12,7 @@ export interface PickupData {
   pickupAddress: string;
   pickupId: string;
   status: 'scheduled' | 'completed' | 'cancelled';
+  paymentReceiptUrl?: string; // Optional receipt image URL for bank transfer/paycheck
   createdAt: any;
 }
 
@@ -34,6 +35,17 @@ export interface UserProfile {
   displayName: string;
   role: 'user' | 'admin';
   profileImageUrl?: string;
+  points: number;
+  createdAt: any;
+}
+
+export interface PointsTransaction {
+  transactionId: string;
+  userId: string;
+  pointsChange: number; // Positive for earned, negative for spent
+  type: 'earned_waste' | 'earned_recycle' | 'spent_discount';
+  description: string;
+  relatedId?: string; // ID of related waste submission, pickup, or purchase
   createdAt: any;
 }
 
@@ -54,7 +66,9 @@ export interface FertilizerPurchaseData {
   fertilizerId: string;
   fertilizerName: string;
   quantity: number;
-  totalAmount: number;
+  originalAmount: number; // Original price before discount
+  pointsDiscount: number; // Points used as discount
+  totalAmount: number; // Final amount after discount
   purchaseDate: string;
   status: 'pending' | 'confirmed' | 'delivered' | 'cancelled';
   deliveryAddress: string;
@@ -106,6 +120,15 @@ export const savePickupData = async (pickupData: Omit<PickupData, 'userId' | 'pi
     console.log('Pickup data saved successfully with document ID: ', docRef.id);
     console.log('Pickup ID returned:', pickupId);
 
+    // Award points for scheduling pickup
+    try {
+      const pointsEarned = await awardPickupPoints(user.uid, pickupData.materials, pickupData.quantities, pickupId);
+      console.log(`Awarded ${pointsEarned} points for pickup ${pickupId}`);
+    } catch (pointsError) {
+      console.error('Error awarding pickup points:', pointsError);
+      // Don't throw error here - pickup is saved, just points failed
+    }
+
     return pickupId;
   } catch (error) {
     console.error('Error in savePickupData:', error);
@@ -147,6 +170,19 @@ export const saveWasteData = async (wasteData: Omit<WasteData, 'userId' | 'waste
     const docRef = await addDoc(collection(db, 'wastes'), dataToSave);
     console.log('Waste data saved successfully with document ID: ', docRef.id);
     console.log('Waste ID returned:', wasteId);
+
+    // Award points for waste submission
+    try {
+      // Convert wasteData to the format expected by points calculation
+      const materials = [wasteData.wasteType];
+      const quantities = { [wasteData.wasteType]: parseFloat(wasteData.quantity) || 0 };
+      
+      const pointsEarned = await awardWastePoints(user.uid, materials, quantities, wasteId);
+      console.log(`Awarded ${pointsEarned} points for waste submission ${wasteId}`);
+    } catch (pointsError) {
+      console.error('Error awarding waste points:', pointsError);
+      // Don't throw error here - waste is saved, just points failed
+    }
 
     return wasteId;
   } catch (error) {
@@ -484,6 +520,7 @@ export const getUserProfile = async (userId?: string): Promise<UserProfile | nul
         displayName: data.displayName,
         role: data.role,
         profileImageUrl: data.profileImageUrl,
+        points: data.points || 0,
         createdAt: data.createdAt,
       } as UserProfile;
     }
@@ -591,6 +628,7 @@ export const getAllPickups = async (): Promise<PickupData[]> => {
     const pickups: PickupData[] = [];
     querySnapshot.forEach((doc) => {
       const data = doc.data();
+      console.log('Raw pickup data from Firestore:', data); // Debug log
       pickups.push({
         userId: data.userId,
         materials: data.materials,
@@ -602,10 +640,12 @@ export const getAllPickups = async (): Promise<PickupData[]> => {
         pickupAddress: data.pickupAddress,
         pickupId: data.pickupId,
         status: data.status,
+        paymentReceiptUrl: data.paymentReceiptUrl,
         createdAt: data.createdAt,
       });
     });
 
+    console.log('Processed pickups with receipt URLs:', pickups.map(p => ({ id: p.pickupId, receiptUrl: p.paymentReceiptUrl })));
     return pickups;
   } catch (error) {
     console.error('Error getting all pickups:', error);
@@ -728,6 +768,18 @@ export const purchaseFertilizer = async (purchaseData: Omit<FertilizerPurchaseDa
       userId: user.uid,
       createdAt: serverTimestamp(),
     });
+
+    // Deduct points if discount was applied
+    if (purchaseData.pointsDiscount > 0) {
+      try {
+        const pointsUsed = Math.ceil(purchaseData.pointsDiscount / 3.00); // Convert discount back to points
+        await usePointsForDiscount(user.uid, pointsUsed, purchaseData.pointsDiscount, docRef.id);
+      } catch (pointsError) {
+        console.error('Error deducting points:', pointsError);
+        // Don't throw error here - purchase is saved, just points failed
+      }
+    }
+
     return docRef.id;
   } catch (error) {
     console.error('Error purchasing fertilizer:', error);
@@ -768,6 +820,8 @@ export const getAllFertilizerPurchases = async (): Promise<FertilizerPurchaseDat
         fertilizerId: data.fertilizerId,
         fertilizerName: data.fertilizerName,
         quantity: data.quantity,
+        originalAmount: data.originalAmount || data.totalAmount, // Backward compatibility
+        pointsDiscount: data.pointsDiscount || 0,
         totalAmount: data.totalAmount,
         purchaseDate: data.purchaseDate,
         status: data.status,
@@ -962,7 +1016,7 @@ export const purchaseCartItems = async (customerInfo: {
   customerPhone: string;
   customerEmail?: string;
   deliveryAddress: string;
-}): Promise<string[]> => {
+}, pointsDiscount: number = 0): Promise<string[]> => {
   try {
     const user = auth.currentUser;
     if (!user) {
@@ -979,17 +1033,26 @@ export const purchaseCartItems = async (customerInfo: {
     const batch = writeBatch(db);
     const purchaseIds: string[] = [];
 
+    // Calculate total and discount distribution
+    const totalOriginalAmount = cartItems.reduce((sum, item) => sum + item.totalAmount, 0);
+    const discountPercentage = pointsDiscount / totalOriginalAmount;
+
     // Create purchase records for each cart item
     cartItems.forEach((cartItem) => {
       const newPurchaseRef = doc(purchaseRef);
       purchaseIds.push(newPurchaseRef.id);
+      
+      const itemDiscountAmount = cartItem.totalAmount * discountPercentage;
+      const finalAmount = cartItem.totalAmount - itemDiscountAmount;
       
       batch.set(newPurchaseRef, {
         userId: user.uid,
         fertilizerId: cartItem.fertilizerId,
         fertilizerName: cartItem.fertilizerName,
         quantity: cartItem.quantity,
-        totalAmount: cartItem.totalAmount,
+        originalAmount: cartItem.totalAmount,
+        pointsDiscount: itemDiscountAmount,
+        totalAmount: finalAmount,
         purchaseDate: new Date().toISOString().split('T')[0],
         status: 'pending',
         deliveryAddress: customerInfo.deliveryAddress,
@@ -1003,6 +1066,17 @@ export const purchaseCartItems = async (customerInfo: {
     // Execute all purchases
     await batch.commit();
 
+    // Deduct points if discount was applied
+    if (pointsDiscount > 0) {
+      try {
+        const pointsUsed = Math.ceil(pointsDiscount / 3.00); // Convert discount back to points
+        await usePointsForDiscount(user.uid, pointsUsed, pointsDiscount, purchaseIds[0]);
+      } catch (pointsError) {
+        console.error('Error deducting points:', pointsError);
+        // Don't throw error here - purchases are saved, just points failed
+      }
+    }
+
     // Clear the cart after successful purchase
     await clearCart(user.uid);
 
@@ -1010,6 +1084,256 @@ export const purchaseCartItems = async (customerInfo: {
     return purchaseIds;
   } catch (error) {
     console.error('Error purchasing cart items:', error);
+    throw error;
+  }
+};
+
+// Points Management Functions
+
+// Ensure user profile exists (create if missing)
+export const ensureUserProfileExists = async (userId?: string): Promise<void> => {
+  try {
+    const targetUserId = userId || auth.currentUser?.uid;
+    if (!targetUserId) {
+      throw new Error('User must be authenticated');
+    }
+
+    const userRef = doc(db, 'userProfiles', targetUserId);
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      // Get user info from Firebase Auth
+      const user = auth.currentUser;
+      if (user) {
+        await setDoc(userRef, {
+          userId: targetUserId,
+          email: user.email || '',
+          displayName: user.displayName || user.email || 'User',
+          role: 'user',
+          points: 0,
+          createdAt: serverTimestamp(),
+        });
+        console.log(`Created user profile for ${targetUserId}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error ensuring user profile exists:', error);
+    // Don't throw error - this is a helper function
+  }
+};
+
+// Get user's current points
+export const getUserPoints = async (userId?: string): Promise<number> => {
+  try {
+    const targetUserId = userId || auth.currentUser?.uid;
+    if (!targetUserId) {
+      throw new Error('User must be authenticated');
+    }
+
+    const userProfile = await getUserProfile(targetUserId);
+    return userProfile?.points || 0;
+  } catch (error) {
+    console.error('Error getting user points:', error);
+    // Return 0 points if there's an error (e.g., user profile doesn't exist)
+    return 0;
+  }
+};
+
+// Add points transaction and update user points
+export const addPointsTransaction = async (
+  userId: string,
+  pointsChange: number,
+  type: PointsTransaction['type'],
+  description: string,
+  relatedId?: string
+): Promise<string> => {
+  try {
+    console.log(`Adding points transaction: ${pointsChange} points for user ${userId}`);
+    
+    // Ensure user profile exists first
+    await ensureUserProfileExists(userId);
+    
+    const batch = writeBatch(db);
+
+    // Add points transaction record
+    const transactionRef = doc(collection(db, 'pointsTransactions'));
+    batch.set(transactionRef, {
+      userId,
+      pointsChange,
+      type,
+      description,
+      relatedId,
+      createdAt: serverTimestamp(),
+    });
+
+    // Update user points
+    const userRef = doc(db, 'userProfiles', userId);
+    const currentPoints = await getUserPoints(userId);
+    const newPoints = Math.max(0, currentPoints + pointsChange); // Ensure points don't go negative
+    
+    batch.update(userRef, {
+      points: newPoints,
+    });
+    
+    await batch.commit();
+    console.log(`Points transaction completed: ${pointsChange} points for ${userId}`);
+    return transactionRef.id;
+  } catch (error) {
+    console.error('Error adding points transaction:', error);
+    throw error;
+  }
+};
+
+// Calculate points earned from waste submission
+export const calculateWastePoints = (materials: string[], quantities: Record<string, number>): number => {
+  const pointsPerKg: Record<string, number> = {
+    'plastic': 10,
+    'paper': 8,
+    'glass': 12,
+    'metal': 15,
+    'organic': 5,
+    'electronic': 20,
+    'clothing': 6,
+    'other': 3,
+  };
+
+  let totalPoints = 0;
+  materials.forEach(material => {
+    const quantity = quantities[material] || 0;
+    const rate = pointsPerKg[material.toLowerCase()] || pointsPerKg['other'];
+    totalPoints += Math.floor(quantity * rate);
+  });
+
+  return totalPoints;
+};
+
+// Award points for waste submission
+export const awardWastePoints = async (
+  userId: string,
+  materials: string[],
+  quantities: Record<string, number>,
+  wasteId: string
+): Promise<number> => {
+  try {
+    const pointsEarned = calculateWastePoints(materials, quantities);
+    
+    if (pointsEarned > 0) {
+      await addPointsTransaction(
+        userId,
+        pointsEarned,
+        'earned_waste',
+        `Points earned from waste submission: ${materials.join(', ')}`,
+        wasteId
+      );
+    }
+
+    return pointsEarned;
+  } catch (error) {
+    console.error('Error awarding waste points:', error);
+    throw error;
+  }
+};
+
+// Award points for pickup completion
+export const awardPickupPoints = async (
+  userId: string,
+  materials: string[],
+  quantities: Record<string, number>,
+  pickupId: string
+): Promise<number> => {
+  try {
+    const basePoints = calculateWastePoints(materials, quantities);
+    // Bonus points for pickup (incentivize scheduling pickups)
+    const bonusPoints = Math.floor(basePoints * 0.2);
+    const totalPoints = basePoints + bonusPoints;
+    
+    if (totalPoints > 0) {
+      await addPointsTransaction(
+        userId,
+        totalPoints,
+        'earned_recycle',
+        `Points earned from pickup: ${materials.join(', ')} (includes 20% pickup bonus)`,
+        pickupId
+      );
+    }
+
+    return totalPoints;
+  } catch (error) {
+    console.error('Error awarding pickup points:', error);
+    throw error;
+  }
+};
+
+// Calculate maximum discount available from points (1 point = LKR 3.00)
+export const calculatePointsDiscount = (points: number, purchaseAmount: number): number => {
+  const pointValue = 3.00; // LKR 3.00 per point
+  const maxDiscount = points * pointValue;
+  // Limit discount to maximum 50% of purchase amount
+  const maxAllowedDiscount = purchaseAmount * 0.5;
+  
+  return Math.min(maxDiscount, maxAllowedDiscount);
+};
+
+// Use points for discount
+export const usePointsForDiscount = async (
+  userId: string,
+  pointsToUse: number,
+  discountAmount: number,
+  purchaseId: string
+): Promise<void> => {
+  try {
+    if (pointsToUse > 0) {
+      await addPointsTransaction(
+        userId,
+        -pointsToUse,
+        'spent_discount',
+        `Points used for fertilizer discount: $${discountAmount.toFixed(2)}`,
+        purchaseId
+      );
+    }
+  } catch (error) {
+    console.error('Error using points for discount:', error);
+    throw error;
+  }
+};
+
+// Get user's points transaction history
+export const getUserPointsHistory = async (userId?: string): Promise<PointsTransaction[]> => {
+  try {
+    const targetUserId = userId || auth.currentUser?.uid;
+    if (!targetUserId) {
+      throw new Error('User must be authenticated');
+    }
+
+    const transactionsRef = collection(db, 'pointsTransactions');
+    const q = query(transactionsRef, where('userId', '==', targetUserId));
+    const querySnapshot = await getDocs(q);
+
+    const transactions: PointsTransaction[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      transactions.push({
+        transactionId: doc.id,
+        userId: data.userId,
+        pointsChange: data.pointsChange,
+        type: data.type,
+        description: data.description,
+        relatedId: data.relatedId,
+        createdAt: data.createdAt,
+      });
+    });
+
+    // Sort by date (newest first)
+    transactions.sort((a, b) => {
+      if (a.createdAt && b.createdAt) {
+        return b.createdAt.toMillis() - a.createdAt.toMillis();
+      }
+      return 0;
+    });
+
+    return transactions;
+  } catch (error) {
+    console.error('Error getting points history:', error);
     throw error;
   }
 };

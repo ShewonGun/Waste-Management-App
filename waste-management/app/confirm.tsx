@@ -24,7 +24,8 @@ export default function PickupConfirmationPage() {
     date,
     time,
     pickupId,
-    address
+    address,
+    receiptUrl
   } = useLocalSearchParams();
 
   const selectedMaterials = materials ? (Array.isArray(materials) ? materials : materials.split(',')) : [];
@@ -35,6 +36,7 @@ export default function PickupConfirmationPage() {
   const pickupTime = time as string;
   const generatedPickupId = pickupId as string || `ECO${Date.now().toString().slice(-8)}`;
   const pickupAddress = address as string;
+  const paymentReceiptUrl = receiptUrl as string;
 
   const calculateTotalWeight = () => {
     return selectedMaterials.reduce((total, key) => {
@@ -118,6 +120,26 @@ export default function PickupConfirmationPage() {
             <Text style={styles.detailLabel}>Payment Method:</Text>
             <Text style={styles.detailValue}>{getPaymentMethodLabel(selectedPayment)}</Text>
           </View>
+
+          {(selectedPayment === 'bank' || selectedPayment === 'paycheck') && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Receipt Status:</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialIcons 
+                  name={paymentReceiptUrl ? "check-circle" : "warning"} 
+                  size={16} 
+                  color={paymentReceiptUrl ? "#4CAF50" : "#FF9800"} 
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={[
+                  styles.detailValue,
+                  { color: paymentReceiptUrl ? "#4CAF50" : "#FF9800" }
+                ]}>
+                  {paymentReceiptUrl ? "Receipt Uploaded ✓" : "No Receipt Uploaded"}
+                </Text>
+              </View>
+            </View>
+          )}
 
           <View style={[styles.detailRow, styles.totalRow]}>
             <Text style={styles.totalLabel}>Estimated Earnings:</Text>
